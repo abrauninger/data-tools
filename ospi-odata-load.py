@@ -6,61 +6,24 @@ endpoint and stuffing it into bigquery.
 """
 
 import argparse
+import json
+import logging
 import requests
-import functools
 import xml.etree.ElementTree as ET
-from odata import edm_to_js_type
+
+from fastavro import writer, parse_schema
+from google.cloud import storage
+from google.cloud.storage.retry import DEFAULT_RETRY
+from odata import get_schemas, get_entity_sets
+
+
+logger = logging.getLogger(__name__)
+storage_client = storage.Client(project='sps-btn-data')
+bucket = storage_client.bucket('sps-btn-data-all-data')
+
 
 ODATA_ENDPOINT = 'https://data.wa.gov/api/odata/v4'
-ODATA_NS = {'edmx': 'http://docs.oasis-open.org/odata/ns/edmx',
-            'edm': 'http://docs.oasis-open.org/odata/ns/edm'}
-
-SOCRATE_PREFIX = 'socrata.'
-
-
-def merge_property(metadata, schema, prop_name, prop_type):
-    """Converts the property into a SQL schema.
-
-    May add multiple properties if there are complex ones.
-    """
-    if prop_type.startswith('Edm.'):
-        # Simple type. All good.
-        schema[prop_name] = edm_to_js_type(prop_type)
-    elif prop_type.startswith(SOCRATE_PREFIX):
-        sub_schema = complex_type_to_schema(metadata,
-                                            prop_type[len(SOCRATE_PREFIX):])
-        for subprop_name, subprop_value in sub_schema.items():
-            schema[f'{prop_name}_{subprop_name}'] = subprop_value
-
-
-@functools.cache
-def complex_type_to_schema(metadata, type_name):
-    schema = {}
-    type_element = metadata.findall(f'.//edm:ComplexType[@Name="{type_name}"]',
-                                    ODATA_NS)[0]
-    for prop in type_element.findall('./edm:Property', ODATA_NS):
-        prop_type = prop.get('Type')
-        if prop_type.startswith('Edm.'):
-            schema[prop.get('Name')] = edm_to_js_type(prop_type)
-        elif prop_type.startswith('socrata.'):
-            subschema = complex_type_to_schema(metadata, prop_type[8:])
-            for subprop_name, subprop_value in subschema:
-                schema[f'{type_name}_{subprop_name}'] = subprop_value
-    return schema
-
-
-def get_schemas(metadata):
-    schemas = {}
-    for entity_type in metadata.findall('.//edm:EntityType', ODATA_NS):
-        cur_schema = {}
-        for prop in entity_type.findall('./edm:Property', ODATA_NS):
-            merge_property(metadata, cur_schema, prop.get('Name'),
-                           prop.get('Type'))
-
-        fourfour_id = entity_type.get('Name')
-        schemas[fourfour_id] = cur_schema
-
-    return schemas
+TMPFILE = './tmp.avro'
 
 
 def getMetadata():
@@ -71,23 +34,110 @@ def getMetadata():
     return response.text
 
 
+def to_avro_schema(schema, name):
+    fields = []
+    for field_name, type_info in schema.items():
+        field_info = {}
+        field_info['name'] = field_name
+        for k, v in type_info['avro_type'].items():
+            field_info[k] = v
+        fields.append(field_info)
+    avro_schema = {
+        'name': name.replace('-', '_'),
+        'type': 'record',
+        'fields': fields,
+    }
+    return avro_schema
+
+
+def entity_path(name):
+    return f'raw/ospi/odata/{name}'
+
+
+def checkpoint_exists(name):
+    return bucket.blob(f'{entity_path(name)}.done').exists()
+
+
+def write_checkpoint(name, value):
+    logger.info(f'CHECKPOINT {name}: writing')
+    return bucket.blob(f'{entity_path(name)}.done').upload_from_string(
+        json.dumps(value),
+        content_type="application/json",
+        retry=DEFAULT_RETRY)
+
+
+def bq_load_all_entities(schemas, entity_sets):
+    for entity in entity_sets:
+        if checkpoint_exists(entity):
+            logger.info(f'CHECKPOINT {entity}: skip')
+            # continue
+
+        logger.info(f'Processing {entity}')
+        avro_schema = to_avro_schema(schemas[entity], entity)
+
+        next_url = f'{ODATA_ENDPOINT}/{entity}'
+        file_written = False
+        try:
+            opened_file = None
+            while next_url is not None:
+                response = requests.get(next_url)
+                if response.status_code != 200:
+                    # No access to data. Skip!
+                    write_checkpoint(entity,
+                                     {'ok': False,
+                                      'status_code': response.status_code,
+                                      'msg': response.text})
+                    break
+                file_written = True
+
+                data = json.loads(response.text)
+                next_url = data.get('@odata.nextLink', None)
+
+                if opened_file is None:
+                    opened_file = open(TMPFILE, 'wb+')
+                    writer(opened_file, parse_schema(avro_schema),
+                           data['value'], codec='zstandard')
+                else:
+                    writer(opened_file, None, data['value'], codec='zstandard')
+
+            if opened_file is not None:
+                opened_file.close()
+                opened_file = None
+                bucket.blob(
+                    f'{entity_path(entity)}.avro').upload_from_filename(
+                        TMPFILE, content_type="application/avro",
+                        retry=DEFAULT_RETRY)
+
+                write_checkpoint(entity, {'ok': True})
+            else:
+                write_checkpoint(entity, {'ok': False, 'message': 'No data?'})
+            if file_written:
+                break
+        finally:
+            if opened_file:
+                opened_file.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Snags data from ospi')
     parser.add_argument('--metadata', type=argparse.FileType('r'),
                         help=('If set, use XML file for metadata instead of '
                               'getting it from the server.'))
+    parser.add_argument('--log-level', default='INFO',
+                        help='set log level {DEBUG, INFO, WARNING, ERROR}')
 
     args = parser.parse_args()
+    logging.basicConfig(level=args.log_level)
     if args.metadata:
         metadata = ET.parse(args.metadata)
     else:
         metadata = ET.fromstring(getMetadata())
 
     schemas = get_schemas(metadata)
-    entity_set_elements = metadata.findall('.//edm:Service/edm:EntitySet',
-                                           ODATA_NS)
-    print(schemas, entity_set_elements)
+    entity_sets = get_entity_sets(metadata)
+
+    bq_load_all_entities(schemas, entity_sets)
 
 
 if __name__ == "__main__":
