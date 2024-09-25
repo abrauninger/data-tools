@@ -8,6 +8,7 @@ endpoint and stuffing it into bigquery.
 import argparse
 import json
 import logging
+import random
 import requests
 import xml.etree.ElementTree as ET
 
@@ -23,7 +24,6 @@ bucket = storage_client.bucket('sps-btn-data-all-data')
 
 
 ODATA_ENDPOINT = 'https://data.wa.gov/api/odata/v4'
-TMPFILE = './tmp.avro'
 
 
 def getMetadata():
@@ -59,24 +59,24 @@ def checkpoint_exists(name):
 
 
 def write_checkpoint(name, value):
-    logger.info(f'CHECKPOINT {name}: writing')
+    logger.info(f'CHECKPOINT {name}: writing: {repr(value)}')
     return bucket.blob(f'{entity_path(name)}.done').upload_from_string(
         json.dumps(value),
         content_type="application/json",
         retry=DEFAULT_RETRY)
 
 
-def bq_load_all_entities(schemas, entity_sets):
+def bq_load_all_entities(schemas, entity_sets, tempfile):
+    random.shuffle(entity_sets)
     for entity in entity_sets:
         if checkpoint_exists(entity):
             logger.info(f'CHECKPOINT {entity}: skip')
-            # continue
+            continue
 
         logger.info(f'Processing {entity}')
         avro_schema = to_avro_schema(schemas[entity], entity)
 
         next_url = f'{ODATA_ENDPOINT}/{entity}'
-        file_written = False
         try:
             opened_file = None
             while next_url is not None:
@@ -88,13 +88,12 @@ def bq_load_all_entities(schemas, entity_sets):
                                       'status_code': response.status_code,
                                       'msg': response.text})
                     break
-                file_written = True
 
                 data = json.loads(response.text)
                 next_url = data.get('@odata.nextLink', None)
 
                 if opened_file is None:
-                    opened_file = open(TMPFILE, 'wb+')
+                    opened_file = open(tempfile, 'wb+')
                     writer(opened_file, parse_schema(avro_schema),
                            data['value'], codec='zstandard')
                 else:
@@ -105,14 +104,12 @@ def bq_load_all_entities(schemas, entity_sets):
                 opened_file = None
                 bucket.blob(
                     f'{entity_path(entity)}.avro').upload_from_filename(
-                        TMPFILE, content_type="application/avro",
+                        tempfile, content_type="application/avro",
                         retry=DEFAULT_RETRY)
 
                 write_checkpoint(entity, {'ok': True})
             else:
                 write_checkpoint(entity, {'ok': False, 'message': 'No data?'})
-            if file_written:
-                break
         finally:
             if opened_file:
                 opened_file.close()
@@ -126,6 +123,10 @@ def main():
                               'getting it from the server.'))
     parser.add_argument('--log-level', default='INFO',
                         help='set log level {DEBUG, INFO, WARNING, ERROR}')
+    parser.add_argument('--tmpfile', required=True,
+                        help='tmpfile for the avro')
+    parser.add_argument('--entity-set', default=None,
+                        help='Do just one entity set')
 
     args = parser.parse_args()
     logging.basicConfig(level=args.log_level)
@@ -135,9 +136,12 @@ def main():
         metadata = ET.fromstring(getMetadata())
 
     schemas = get_schemas(metadata)
-    entity_sets = get_entity_sets(metadata)
+    if args.entity_set:
+        entity_sets = [args.entity_set]
+    else:
+        entity_sets = get_entity_sets(metadata)
 
-    bq_load_all_entities(schemas, entity_sets)
+    bq_load_all_entities(schemas, entity_sets, args.tempfile)
 
 
 if __name__ == "__main__":

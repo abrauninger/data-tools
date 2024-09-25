@@ -6,6 +6,10 @@ ODATA_NS = {'edmx': 'http://docs.oasis-open.org/odata/ns/edmx',
 SOCRATA_PREFIX = 'socrata.'
 
 
+def identity(x):
+    return x
+
+
 def edmBinaryToBytes(indata):
     raise NotImplementedError()
 
@@ -106,7 +110,7 @@ def edmGeographyMultiPolygonToMultiPolygon(indata):
     raise NotImplementedError()
 
 
-def edm_to_js_type(edm_node):
+def edm_to_schema_type(edm_node):
     edm_type = edm_node.get('Type')
     match edm_type:
         case 'Edm.Binary':
@@ -114,21 +118,21 @@ def edm_to_js_type(edm_node):
                     'avro_type': {
                         'type': ['null', 'bytes'],
                     },
-                    'transform': edmBinaryToBytes}
+                    'transform': identity}
 
         case 'Edm.Boolean':
             return {'sql_type': 'BOOL',
                     'avro_type': {
                         'type': ['null', 'boolean'],
                     },
-                    'transform': edmBooleanToBool}
+                    'transform': identity}
 
         case 'Edm.Byte':
             return {'sql_type': 'BYTES',
                     'avro_type': {
                         'type': ['null', 'bytes'],
                     },
-                    'transform': edmByteToBytes}
+                    'transform': identity}
 
         case 'Edm.Date':
             return {'sql_type': 'DATE',
@@ -136,7 +140,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'int'],
                         'logicalType': 'date',
                     },
-                    'transform': edmDateToDate}
+                    'transform': identity}
 
         case 'Edm.DateTime':
             return {'sql_type': 'DATETIME',
@@ -144,7 +148,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'int'],
                         'logicalType': 'timestamp-millis',
                     },
-                    'transform': edmDateTimeToDateTime}
+                    'transform': identity}
 
         case 'Edm.DateTimeOffset':
             return {'sql_type': 'DATETIME',
@@ -152,21 +156,21 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'int'],
                         'logicalType': 'timestamp-millis',
                     },
-                    'transform': edmDateTimeToDateTime}
+                    'transform': identity}
 
         case 'Edm.Decimal':
             return {'sql_type': 'FLOAT64',
                     'avro_type': {
                         'type': ['null', 'double']
                     },
-                    'transform': edmDecimalToDecimal}
+                    'transform': identity}
 
         case 'Edm.Double':
             return {'sql_type': 'FLOAT64',
                     'avro_type': {
                         'type': ['null', 'double'],
                     },
-                    'transform': edmDoubleToDouble}
+                    'transform': identity}
 
         case 'Edm.Duration':
             return {'sql_type': 'INTERVAL',
@@ -176,7 +180,7 @@ def edm_to_js_type(edm_node):
                         'logicalType': 'duration',
                         'size': 12,
                     },
-                    'transform': edmDurationToInterval,
+                    'transform': identity,
                     }
 
         case 'Edm.Guid':
@@ -185,7 +189,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'uuid',
                     },
-                    'transform': edmGuidToString}
+                    'transform': identity}
 
         case 'Edm.Int16':
             return {'sql_type': 'SMALLINT',
@@ -194,21 +198,21 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'fixed'],
                         'size': 2,
                     },
-                    'transform': edmInt16ToSmallInt}
+                    'transform': identity}
 
         case 'Edm.Int32':
             return {'sql_type': 'INT',
                     'avro_type': {
                         'type': ['null', 'int'],
                     },
-                    'transform': edmInt32ToInt}
+                    'transform': identity}
 
         case 'Edm.Int64':
             return {'sql_type': 'BIGINT',
                     'avro_type': {
                         'type': ['null', 'long'],
                     },
-                    'transform': edmInt64ToBigInt}
+                    'transform': identity}
 
         case 'Edm.SByte':
             return {'sql_type': 'TINYINT',
@@ -217,21 +221,21 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'fixed'],
                         'size': 1,
                     },
-                    'transform': edmSByteToTinyInt}
+                    'transform': identity}
 
         case 'Edm.Single':
             return {'sql_type': 'FLOAT64',
                     'avro_type': {
                         'type': ['null', 'float'],
                     },
-                    'transform': edmSingleToFloat}
+                    'transform': identity}
 
         case 'Edm.String':
             return {'sql_type': 'STRING',
                     'avro_type': {
                         'type': ['null', 'string'],
                     },
-                    'transform': edmStringToString}
+                    'transform': identity}
 
         case 'Edm.Geography':
             return {'sql_type': 'GEOGRAPHY',
@@ -239,7 +243,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'geography',
                     },
-                    'transform': edmGeographyToGeography}
+                    'transform': identity}
 
         case 'Edm.GeographyPoint':
             return {'sql_type': 'POINT',
@@ -247,7 +251,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'point',
                     },
-                    'transform': edmGeographyPointToPoint}
+                    'transform': identity}
 
         case 'Edm.GeographyLineString':
             return {'sql_type': 'LineString',
@@ -255,7 +259,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'linestring',
                     },
-                    'transform': edmGeographyPointToPoint}
+                    'transform': identity}
 
         case 'Edm.GeographyMultiPoint':
             return {'sql_type': 'MULTIPOINT',
@@ -263,7 +267,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'multipoint',
                     },
-                    'transform': edmGeographyMultiPointToMultipoint}
+                    'transform': identity}
 
         case 'Edm.GeographyMultiLineString':
             return {'sql_type': 'MULTILINESTRING',
@@ -271,7 +275,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'multilinestring',
                     },
-                    'transform': edmGeographyMultiLineStringToMultiLineString}
+                    'transform': identity}
 
         case 'Edm.GeographyMultiPolygon':
             return {'sql_type': 'MULTIPOLYGON',
@@ -279,7 +283,7 @@ def edm_to_js_type(edm_node):
                         'type': ['null', 'string'],
                         'logicalType': 'multipolygon',
                     },
-                    'transform': edmGeographyMultiPolygonToMultiPolygon}
+                    'transform': identity}
 
         case _:
             raise NotImplementedError(edm_type)
@@ -294,7 +298,7 @@ def merge_property(metadata, schema, prop):
     prop_type = prop.get('Type')
     if prop_type.startswith('Edm.'):
         # Simple type. All good.
-        schema_type = edm_to_js_type(prop)
+        schema_type = edm_to_schema_type(prop)
         if prop_name == '__id':
             schema_type['avro_type']['type'] = 'string'
 
@@ -314,7 +318,7 @@ def complex_type_to_schema(metadata, type_name):
     for prop in type_element.findall('./edm:Property', ODATA_NS):
         prop_type = prop.get('Type')
         if prop_type.startswith('Edm.'):
-            schema_type = edm_to_js_type(prop)
+            schema_type = edm_to_schema_type(prop)
             prop_name = prop.get('Name')
 
             if prop_name == '__id':
