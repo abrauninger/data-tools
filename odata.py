@@ -1,3 +1,4 @@
+import copy
 import functools
 from datetime import datetime, timedelta, timezone
 
@@ -15,6 +16,24 @@ def identity(x):
 def _since_epoch(x):
     parsed_date = datetime.fromisoformat(x)
     return (parsed_date - EPOCH)
+
+
+def transform_complex_field_old(field, value):
+    name = field['name']
+    transform = field['transform']
+
+    if value[name] is None:
+        return f'NULL as {name}'
+    return f'"{transform(value[name])}" as {name}'
+
+
+def transform_complex_field(field, value):
+    name = field['name']
+    transform = field['transform']
+
+    if value[name] is None:
+        return None
+    return transform(value[name])
 
 
 def transform_edm_date_to_epoch_days(x):
@@ -51,7 +70,7 @@ def transform_edm_multiline_to_multilineliteral(x):
     # Array of Lines.
     # Each line is an array of points.
     return 'MULTILINESTRING (%s)' % (','.join(
-        ['(%s)' % ','.join([ f'{point[0]} {point[1]}' for point in line ])
+        ['(%s)' % ','.join([f'{point[0]} {point[1]}' for point in line])
          for line in coordinates]))
 
 
@@ -93,15 +112,15 @@ def transform_edm_multipolygon_to_multipolygon(x):
     # Polygon is array of mulitpoints
     # A multipoint is an array of points
     return 'MULTIPOLYGON (%s)' % ','.join(
-        ['(%s)' % ','.join(  # One polygon
-                           ['(%s)' % ','.join( # One multipoint
-                                              [f'{point[0]} {point[1]}'
-                                               for point in multipoint])
-                            for multipoint in polygon])
+        ['(%s)' % ','.join([
+            '(%s)' % ','.join([f'{point[0]} {point[1]}'
+                               for point in multipoint])
+            for multipoint in polygon])
          for polygon in coordinates])
 
 
 def edm_to_schema_type(edm_node):
+    """Returns a schmea type which is sql_type, avro_type, transform"""
     edm_type = edm_node.get('Type')
     match edm_type:
         case 'Edm.Binary':
@@ -152,7 +171,7 @@ def edm_to_schema_type(edm_node):
         case 'Edm.Decimal':
             return {'sql_type': 'FLOAT64',
                     'avro_type': {
-                        'type': ['null', 'double']
+                        'type': 'double'
                     },
                     'transform': identity}
 
@@ -305,32 +324,56 @@ def merge_property(metadata, schema, prop):
         # Simple type. All good.
         schema[prop_name] = edm_to_schema_type(prop)
     elif prop_type.startswith(SOCRATA_PREFIX):
-        sub_schema = complex_type_to_schema(metadata,
-                                            prop_type[len(SOCRATA_PREFIX):])
-        for subprop_name, subprop_value in sub_schema.items():
-            schema[f'{prop_name}_{subprop_name}'] = subprop_value
+        schema_type = copy.deepcopy(complex_type_to_schema(
+            metadata,
+            prop_type[len(SOCRATA_PREFIX):]))
+        schema_type['avro_type']['namespace'] = prop_name
+        schema[prop_name] = schema_type
 
 
 @functools.cache
 def complex_type_to_schema(metadata, type_name):
-    schema = {}
+    """Returns a schmea type which is sql_type, avro_type, transform"""
     type_element = metadata.findall(f'.//edm:ComplexType[@Name="{type_name}"]',
                                     ODATA_NS)[0]
+    fields = []
     for prop in type_element.findall('./edm:Property', ODATA_NS):
         prop_type = prop.get('Type')
+        prop_name = prop.get('Name')
         if prop_type.startswith('Edm.'):
-            schema_type = edm_to_schema_type(prop)
-            prop_name = prop.get('Name')
-
-            if prop_name == '__id':
-                schema_type['avro_type']['type'] = 'string'
-            schema[prop_name] = schema_type
+            field = {'name': prop_name}
+            for k, v in edm_to_schema_type(prop).items():
+                field[k] = v
+            fields.append(field)
 
         elif prop_type.startswith('socrata.'):
-            subschema = complex_type_to_schema(metadata, prop_type[8:])
-            for subprop_name, subprop_value in subschema:
-                schema[f'{type_name}_{subprop_name}'] = subprop_value
-    return schema
+            # TODO: Support nested complex types later.
+            raise ValueError(prop_type)
+
+    # def transform_complex(value):
+    #     if value is None:
+    #         return None
+
+    #     transformed = [transform_complex_field(f, value) for f in fields]
+    #     return 'STRUCT(%s)' % ','.join(
+    #         [x for x in transformed if x is not None ])
+    def transform_complex(value):
+        if value is None:
+            return None
+
+        return {f['name']: transform_complex_field(f, value)
+                for f in fields}
+
+    return {
+        'sql_type': 'STRUCT',
+        'avro_type': {
+            'type': 'record',
+            'namespace': 'root',
+            'name': type_name,
+            'fields': fields,
+        },
+        'transform': transform_complex,
+    }
 
 
 def get_schemas(metadata):

@@ -34,20 +34,57 @@ def getMetadata():
     return response.text
 
 
+def to_field_value(field):
+    if field['avro_type']['type'] != 'record':
+        return {
+            'name': field['name'],
+            'type': [
+                'null',
+                field['avro_type']
+            ]
+        }
+
+
+def to_avrofields(schema_fields):
+    return [to_field_value(field) for field in schema_fields]
+
+
 def to_avro_schema(schema, name):
     fields = []
     for field_name, type_info in schema.items():
         field_info = {}
+        fields.append(field_info)
+
         field_info['name'] = field_name
-        for k, v in type_info['avro_type'].items():
-            field_info[k] = v
-        if field_name != '__id':
+
+        avro_type = type_info['avro_type']
+
+        # Just copy all of the avro_type over
+        # for the simple case of a non record.
+        if avro_type['type'] != 'record':
+            for k, v in avro_type.items():
+                field_info[k] = v
+
+            # The __id column is not nullable.
+            if field_name != '__id':
+                field_info['type'] = [
+                    'null',
+                    field_info['type'],
+                ]
+                field_info['default'] = None
+
+        else:
+            # Records are complex. Start with default.
             field_info['default'] = None
             field_info['type'] = [
                 'null',
-                field_info['type'],
+                {
+                    'type': avro_type['type'],
+                    'namespace': avro_type['namespace'],
+                    'name': avro_type['name'],
+                    'fields': to_avrofields(avro_type['fields']),
+                }
             ]
-        fields.append(field_info)
     avro_schema = {
         'name': 'Root',
         'type': 'record',
@@ -106,6 +143,7 @@ def scrape_all_entities(schemas, entity_sets, tempfile, force, skip_upload):
                     for row in data['value']]
 
                 if opened_file is None:
+                    print(to_avro_schema(entity_schema, entity))
                     opened_file = open(tempfile, 'wb+')
                     writer(opened_file,
                            parse_schema(to_avro_schema(entity_schema, entity)),
