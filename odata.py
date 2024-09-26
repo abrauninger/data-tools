@@ -324,15 +324,15 @@ def merge_property(metadata, schema, prop):
         # Simple type. All good.
         schema[prop_name] = edm_to_schema_type(prop)
     elif prop_type.startswith(SOCRATA_PREFIX):
-        schema_type = copy.deepcopy(complex_type_to_schema(
+        schema_type = complex_type_to_schema(
             metadata,
-            prop_type[len(SOCRATA_PREFIX):]))
-        schema_type['avro_type']['namespace'] = prop_name
+            prop_name,
+            prop_type[len(SOCRATA_PREFIX):])
         schema[prop_name] = schema_type
 
 
 @functools.cache
-def complex_type_to_schema(metadata, type_name):
+def complex_type_to_schema(metadata, namespace, type_name):
     """Returns a schmea type which is sql_type, avro_type, transform"""
     type_element = metadata.findall(f'.//edm:ComplexType[@Name="{type_name}"]',
                                     ODATA_NS)[0]
@@ -341,22 +341,20 @@ def complex_type_to_schema(metadata, type_name):
         prop_type = prop.get('Type')
         prop_name = prop.get('Name')
         if prop_type.startswith('Edm.'):
-            field = {'name': prop_name}
-            for k, v in edm_to_schema_type(prop).items():
-                field[k] = v
-            fields.append(field)
-
+            schema_type = edm_to_schema_type(prop).items()
         elif prop_type.startswith('socrata.'):
-            # TODO: Support nested complex types later.
+            schema_type = complex_type_to_schema(
+                metadata,
+                f'{namespace}_{prop_name}',
+                prop_type[len(SOCRATA_PREFIX):])
+        else:
             raise ValueError(prop_type)
 
-    # def transform_complex(value):
-    #     if value is None:
-    #         return None
+        field = {'name': prop_name}
+        for k, v in edm_to_schema_type(prop).items():
+            field[k] = v
+        fields.append(field)
 
-    #     transformed = [transform_complex_field(f, value) for f in fields]
-    #     return 'STRUCT(%s)' % ','.join(
-    #         [x for x in transformed if x is not None ])
     def transform_complex(value):
         if value is None:
             return None
@@ -368,7 +366,7 @@ def complex_type_to_schema(metadata, type_name):
         'sql_type': 'STRUCT',
         'avro_type': {
             'type': 'record',
-            'namespace': 'root',
+            'namespace': namespace,
             'name': type_name,
             'fields': fields,
         },

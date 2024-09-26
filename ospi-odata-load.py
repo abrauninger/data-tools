@@ -143,7 +143,6 @@ def scrape_all_entities(schemas, entity_sets, tempfile, force, skip_upload):
                     for row in data['value']]
 
                 if opened_file is None:
-                    print(to_avro_schema(entity_schema, entity))
                     opened_file = open(tempfile, 'wb+')
                     writer(opened_file,
                            parse_schema(to_avro_schema(entity_schema, entity)),
