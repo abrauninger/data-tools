@@ -1,113 +1,104 @@
 import functools
+from datetime import datetime, timedelta, timezone
 
 ODATA_NS = {'edmx': 'http://docs.oasis-open.org/odata/ns/edmx',
             'edm': 'http://docs.oasis-open.org/odata/ns/edm'}
 
 SOCRATA_PREFIX = 'socrata.'
+EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def identity(x):
     return x
 
 
-def edmBinaryToBytes(indata):
-    raise NotImplementedError()
+def _since_epoch(x):
+    parsed_date = datetime.fromisoformat(x)
+    return (parsed_date - EPOCH)
 
 
-def edmBooleanToBool(indata):
-    raise NotImplementedError()
+def transform_edm_date_to_epoch_days(x):
+    if x is None:
+        return x
+
+    return _since_epoch(x).days
 
 
-def edmByteToBytes(indata):
-    raise NotImplementedError()
+def transform_edm_date_to_millis(x):
+    if x is None:
+        return x
+
+    return round(_since_epoch(x) / timedelta(milliseconds=1))
 
 
-def edmDateToDate(indata):
-    raise NotImplementedError()
+def transform_edm_point_to_pointliteral(x):
+    if x is None:
+        return x
+
+    if x['type'] != 'Point':
+        raise ValueError(x)
+    coordinates = x['coordinates']
+    return f'POINT({coordinates[0]} {coordinates[1]})'
 
 
-def edmDateTimeToDateTime(indata):
-    raise NotImplementedError()
+def transform_edm_multiline_to_multilineliteral(x):
+    if x is None:
+        return x
+
+    if x['type'] != 'MultiLineString':
+        raise ValueError(x)
+    coordinates = x['coordinates']
+    # Array of Lines.
+    # Each line is an array of points.
+    return 'MULTILINESTRING (%s)' % (','.join(
+        ['(%s)' % ','.join([ f'{point[0]} {point[1]}' for point in line ])
+         for line in coordinates]))
 
 
-def edmDecimalToDecimal(indata):
-    raise NotImplementedError()
+def transform_edm_linestring_to_linestring(x):
+    if x is None:
+        return x
+
+    if x['type'] != 'LineString':
+        raise ValueError(x)
+    coordinates = x['coordinates']
+    # Array of Lines.
+    # Each line is an array of points.
+    return 'LINESTRING (%s)' % ','.join([
+        f'{point[0]} {point[1]}' for point in coordinates])
 
 
-def edmDoubleToDouble(indata):
-    raise NotImplementedError()
+def transform_edm_multipoint_to_multipoint(x):
+    if x is None:
+        return x
+
+    if x['type'] != 'MultiPoint':
+        raise ValueError(x)
+    coordinates = x['coordinates']
+    # Array of Lines.
+    # Each line is an array of points.
+    return 'MULTIPOINT (%s)' % ','.join([
+        f'{point[0]} {point[1]}' for point in coordinates])
 
 
-def edmDoubleToFloat(indata):
-    raise NotImplementedError()
+def transform_edm_multipolygon_to_multipolygon(x):
+    if x is None:
+        return x
 
+    if x['type'] != 'MultiPolygon':
+        raise ValueError(x)
 
-def edmDurationToInterval(indata):
-    raise NotImplementedError()
-
-
-def edmGuidToString(indata):
-    raise NotImplementedError()
-
-
-def edmInt16ToSmallInt(indata):
-    raise NotImplementedError()
-
-
-def edmInt32ToInt(indata):
-    raise NotImplementedError()
-
-
-def edmInt64ToBigInt(indata):
-    raise NotImplementedError()
-
-
-def edmSByteToTinyInt(indata):
-    raise NotImplementedError()
-
-
-def edmSingleToFloat(indata):
-    raise NotImplementedError()
-
-
-def edmStreamToFoo(indata):
-    raise NotImplementedError()
-
-
-def edmStringToString(indata):
-    raise NotImplementedError()
-
-
-def edmTimeOfDayToFoo(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyToGeography(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyPointToPoint(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyLineStringToLineString(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyPolygonToPolygon(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyMultiPointToMultipoint(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyMultiLineStringToMultiLineString(indata):
-    raise NotImplementedError()
-
-
-def edmGeographyMultiPolygonToMultiPolygon(indata):
-    raise NotImplementedError()
+    coordinates = x['coordinates']
+    # Array of Polygons
+    # Polygon is array of mulitpoints
+    # A multipoint is an array of points
+    return 'MULTIPOLYGON (%s)' % ','.join(
+        ['(%s)' % ','.join(  # One polygon
+                           ['(%s)' % ','.join( # One multipoint
+                                              [f'{point[0]} {point[1]}'
+                                               for point in multipoint])
+                            for multipoint in polygon])
+         for polygon in coordinates])
 
 
 def edm_to_schema_type(edm_node):
@@ -116,47 +107,47 @@ def edm_to_schema_type(edm_node):
         case 'Edm.Binary':
             return {'sql_type': 'BYTES',
                     'avro_type': {
-                        'type': ['null', 'bytes'],
+                        'type': 'bytes',
                     },
                     'transform': identity}
 
         case 'Edm.Boolean':
             return {'sql_type': 'BOOL',
                     'avro_type': {
-                        'type': ['null', 'boolean'],
+                        'type': 'boolean',
                     },
                     'transform': identity}
 
         case 'Edm.Byte':
             return {'sql_type': 'BYTES',
                     'avro_type': {
-                        'type': ['null', 'bytes'],
+                        'type': 'bytes',
                     },
                     'transform': identity}
 
         case 'Edm.Date':
             return {'sql_type': 'DATE',
                     'avro_type': {
-                        'type': ['null', 'int'],
+                        'type': 'int',
                         'logicalType': 'date',
                     },
-                    'transform': identity}
+                    'transform': transform_edm_date_to_epoch_days}
 
         case 'Edm.DateTime':
             return {'sql_type': 'DATETIME',
                     'avro_type': {
-                        'type': ['null', 'int'],
+                        'type': 'int',
                         'logicalType': 'timestamp-millis',
                     },
-                    'transform': identity}
+                    'transform': transform_edm_date_to_millis}
 
         case 'Edm.DateTimeOffset':
             return {'sql_type': 'DATETIME',
                     'avro_type': {
-                        'type': ['null', 'int'],
+                        'type': 'int',
                         'logicalType': 'timestamp-millis',
                     },
-                    'transform': identity}
+                    'transform': transform_edm_date_to_millis}
 
         case 'Edm.Decimal':
             return {'sql_type': 'FLOAT64',
@@ -168,7 +159,7 @@ def edm_to_schema_type(edm_node):
         case 'Edm.Double':
             return {'sql_type': 'FLOAT64',
                     'avro_type': {
-                        'type': ['null', 'double'],
+                        'type': 'double',
                     },
                     'transform': identity}
 
@@ -176,7 +167,7 @@ def edm_to_schema_type(edm_node):
             return {'sql_type': 'INTERVAL',
                     'avro_type': {
                         'name': 'interval',
-                        'type': ['null', 'fixed'],
+                        'type': 'fixed',
                         'logicalType': 'duration',
                         'size': 12,
                     },
@@ -186,7 +177,7 @@ def edm_to_schema_type(edm_node):
         case 'Edm.Guid':
             return {'sql_type': 'STRING',
                     'avro_type': {
-                        'type': ['null', 'string'],
+                        'type': 'string',
                         'logicalType': 'uuid',
                     },
                     'transform': identity}
@@ -195,7 +186,7 @@ def edm_to_schema_type(edm_node):
             return {'sql_type': 'SMALLINT',
                     'avro_type': {
                         'name': 'int16',
-                        'type': ['null', 'fixed'],
+                        'type': 'fixed',
                         'size': 2,
                     },
                     'transform': identity}
@@ -203,14 +194,14 @@ def edm_to_schema_type(edm_node):
         case 'Edm.Int32':
             return {'sql_type': 'INT',
                     'avro_type': {
-                        'type': ['null', 'int'],
+                        'type': 'int',
                     },
                     'transform': identity}
 
         case 'Edm.Int64':
             return {'sql_type': 'BIGINT',
                     'avro_type': {
-                        'type': ['null', 'long'],
+                        'type': 'long',
                     },
                     'transform': identity}
 
@@ -218,7 +209,7 @@ def edm_to_schema_type(edm_node):
             return {'sql_type': 'TINYINT',
                     'avro_type': {
                         'name': 'sbyte',
-                        'type': ['null', 'fixed'],
+                        'type': 'fixed',
                         'size': 1,
                     },
                     'transform': identity}
@@ -226,64 +217,78 @@ def edm_to_schema_type(edm_node):
         case 'Edm.Single':
             return {'sql_type': 'FLOAT64',
                     'avro_type': {
-                        'type': ['null', 'float'],
+                        'type': 'float',
                     },
                     'transform': identity}
 
         case 'Edm.String':
             return {'sql_type': 'STRING',
                     'avro_type': {
-                        'type': ['null', 'string'],
+                        'type': 'string',
                     },
                     'transform': identity}
 
         case 'Edm.Geography':
             return {'sql_type': 'GEOGRAPHY',
                     'avro_type': {
-                        'type': ['null', 'string'],
-                        'logicalType': 'geography',
+                        'type': {
+                            "type": "string",
+                            "logicaltype": "geography_wkt",
+                        },
                     },
                     'transform': identity}
 
         case 'Edm.GeographyPoint':
-            return {'sql_type': 'POINT',
+            return {'sql_type': 'GEOGRAPHY',
                     'avro_type': {
-                        'type': ['null', 'string'],
-                        'logicalType': 'point',
+                        'type': {
+                            "type": "string",
+                            "logicaltype": "geography_wkt",
+                        },
                     },
-                    'transform': identity}
+                    'transform': transform_edm_point_to_pointliteral}
 
         case 'Edm.GeographyLineString':
-            return {'sql_type': 'LineString',
+            return {'sql_type': 'GEOGRAPHY',
                     'avro_type': {
-                        'type': ['null', 'string'],
+                        'type': {
+                            "type": "string",
+                            "logicaltype": "geography_wkt",
+                        },
                         'logicalType': 'linestring',
                     },
-                    'transform': identity}
+                    'transform': transform_edm_linestring_to_linestring}
 
         case 'Edm.GeographyMultiPoint':
-            return {'sql_type': 'MULTIPOINT',
+            return {'sql_type': 'GEOGRAPHY',
                     'avro_type': {
-                        'type': ['null', 'string'],
+                        'type': {
+                            "type": "string",
+                            "logicaltype": "geography_wkt",
+                        },
                         'logicalType': 'multipoint',
                     },
-                    'transform': identity}
+                    'transform': transform_edm_multipoint_to_multipoint}
 
         case 'Edm.GeographyMultiLineString':
-            return {'sql_type': 'MULTILINESTRING',
+            return {'sql_type': 'GEOGRAPHY',
                     'avro_type': {
-                        'type': ['null', 'string'],
-                        'logicalType': 'multilinestring',
+                        'type': {
+                            "type": "string",
+                            "logicaltype": "geography_wkt",
+                        },
                     },
-                    'transform': identity}
+                    'transform': transform_edm_multiline_to_multilineliteral}
 
         case 'Edm.GeographyMultiPolygon':
-            return {'sql_type': 'MULTIPOLYGON',
+            return {'sql_type': 'GEOGRAPHY',
                     'avro_type': {
-                        'type': ['null', 'string'],
-                        'logicalType': 'multipolygon',
+                        'type': {
+                            "type": "string",
+                            "logicaltype": "geography_wkt",
+                        },
                     },
-                    'transform': identity}
+                    'transform': transform_edm_multipolygon_to_multipolygon}
 
         case _:
             raise NotImplementedError(edm_type)
@@ -298,11 +303,7 @@ def merge_property(metadata, schema, prop):
     prop_type = prop.get('Type')
     if prop_type.startswith('Edm.'):
         # Simple type. All good.
-        schema_type = edm_to_schema_type(prop)
-        if prop_name == '__id':
-            schema_type['avro_type']['type'] = 'string'
-
-        schema[prop_name] = schema_type
+        schema[prop_name] = edm_to_schema_type(prop)
     elif prop_type.startswith(SOCRATA_PREFIX):
         sub_schema = complex_type_to_schema(metadata,
                                             prop_type[len(SOCRATA_PREFIX):])

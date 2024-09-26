@@ -41,9 +41,15 @@ def to_avro_schema(schema, name):
         field_info['name'] = field_name
         for k, v in type_info['avro_type'].items():
             field_info[k] = v
+        if field_name != '__id':
+            field_info['default'] = None
+            field_info['type'] = [
+                'null',
+                field_info['type'],
+            ]
         fields.append(field_info)
     avro_schema = {
-        'name': name.replace('-', '_'),
+        'name': 'Root',
         'type': 'record',
         'fields': fields,
     }
@@ -66,15 +72,15 @@ def write_checkpoint(name, value):
         retry=DEFAULT_RETRY)
 
 
-def bq_load_all_entities(schemas, entity_sets, tempfile):
+def scrape_all_entities(schemas, entity_sets, tempfile, force, skip_upload):
     random.shuffle(entity_sets)
     for entity in entity_sets:
-        if checkpoint_exists(entity):
+        if not force and checkpoint_exists(entity):
             logger.info(f'CHECKPOINT {entity}: skip')
             continue
 
         logger.info(f'Processing {entity}')
-        avro_schema = to_avro_schema(schemas[entity], entity)
+        entity_schema = schemas[entity]
 
         next_url = f'{ODATA_ENDPOINT}/{entity}'
         try:
@@ -92,12 +98,24 @@ def bq_load_all_entities(schemas, entity_sets, tempfile):
                 data = json.loads(response.text)
                 next_url = data.get('@odata.nextLink', None)
 
+                values = [
+                    {field_name:
+                     entity_schema[field_name]['transform'](field_value)
+                     for field_name, field_value
+                     in row.items()}
+                    for row in data['value']]
+
                 if opened_file is None:
                     opened_file = open(tempfile, 'wb+')
-                    writer(opened_file, parse_schema(avro_schema),
-                           data['value'], codec='zstandard')
+                    writer(opened_file,
+                           parse_schema(to_avro_schema(entity_schema, entity)),
+                           values, codec='zstandard')
                 else:
-                    writer(opened_file, None, data['value'], codec='zstandard')
+                    writer(opened_file, None, values, codec='zstandard')
+
+            if skip_upload:
+                logger.info(f"Skipping upload for {entity}")
+                continue
 
             if opened_file is not None:
                 opened_file.close()
@@ -123,10 +141,14 @@ def main():
                               'getting it from the server.'))
     parser.add_argument('--log-level', default='INFO',
                         help='set log level {DEBUG, INFO, WARNING, ERROR}')
-    parser.add_argument('--tmpfile', required=True,
-                        help='tmpfile for the avro')
+    parser.add_argument('--tempfile', required=True,
+                        help='tempfile for the avro')
     parser.add_argument('--entity-set', default=None,
                         help='Do just one entity set')
+    parser.add_argument('--force', action=argparse.BooleanOptionalAction,
+                        help='Ignore checkpoints')
+    parser.add_argument('--skip-upload', action=argparse.BooleanOptionalAction,
+                        help='Do not upload. Do not make checkpoints')
 
     args = parser.parse_args()
     logging.basicConfig(level=args.log_level)
@@ -141,7 +163,12 @@ def main():
     else:
         entity_sets = get_entity_sets(metadata)
 
-    bq_load_all_entities(schemas, entity_sets, args.tempfile)
+    scrape_all_entities(
+        schemas=schemas,
+        entity_sets=entity_sets,
+        tempfile=args.tempfile,
+        force=args.force,
+        skip_upload=args.skip_upload)
 
 
 if __name__ == "__main__":
