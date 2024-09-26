@@ -155,7 +155,7 @@ def edm_to_schema_type(edm_node):
         case 'Edm.DateTime':
             return {'sql_type': 'DATETIME',
                     'avro_type': {
-                        'type': 'int',
+                        'type': 'long',
                         'logicalType': 'timestamp-millis',
                     },
                     'transform': transform_edm_date_to_millis}
@@ -163,7 +163,7 @@ def edm_to_schema_type(edm_node):
         case 'Edm.DateTimeOffset':
             return {'sql_type': 'DATETIME',
                     'avro_type': {
-                        'type': 'int',
+                        'type': 'long',
                         'logicalType': 'timestamp-millis',
                     },
                     'transform': transform_edm_date_to_millis}
