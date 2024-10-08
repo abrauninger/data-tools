@@ -1,7 +1,10 @@
 """
-Extracts data from batches of P223 PDFs.
-Reads PDFs from '../input' directory and writes CSVs to '../output'.
-$ python3 p223_batch.py
+Extracts data from batches of P223 PDFs from seattleschools.org.
+Reads PDFs from an input directory and writes CSVs to an output directory
+$ python3 p223_batch.py path/to/input/directory path/to/output/directory
+
+The input directory should contain PDFs similar to https://www.seattleschools.org/wp-content/uploads/2024/09/P223_Sep24.pdf,
+and the PDF file names are expected to follow the naming convention to identify their month and year.
 """
 
 import glob
@@ -95,4 +98,4 @@ def main(input_directory, output_directory):
 
 
 if __name__ == '__main__':
-    main('../input/p223', '../output/p223')
+    main(sys.argv[1], sys.argv[2])
