@@ -52,16 +52,14 @@ def main(input_directory, output_directory):
     for pdf_path in pdf_paths:
         with tempfile.NamedTemporaryFile(delete_on_close=False) as squished_tempfile:
             # '-f 2' to start processing on the second page of the PDF (since page 1 is a cover page).
-            pdftotext_process = subprocess.Popen([pdftotext, '-layout', pdf_path, '-f', '2', '-'], stdout=subprocess.PIPE)
-            tr_process = subprocess.Popen([tr, '-s', "' '"], stdin=pdftotext_process.stdout, stdout=squished_tempfile)
-            pdftotext_process.stdout.close()
-            out, err = tr_process.communicate()
+            pdftotext_process = subprocess.Popen([pdftotext, '-layout', pdf_path, '-f', '2', '-'], stdout=squished_tempfile)
+            out, err = pdftotext_process.communicate()
 
             if err is not None:
-                sys.exit(f"'pdftotext' and/or 'tr' had an error:\n{err}")
+                sys.exit(f"'pdftotext' had an error:\n{err}")
 
             if out is not None:
-                print(f"'pdftotext' and/or 'tr' produced output on stdout, which was unexpected:\n{out}")
+                print(f"'pdftotext' produced output on stdout, which was unexpected:\n{out}")
 
             squished_tempfile.close()
 

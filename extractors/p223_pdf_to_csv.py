@@ -3,7 +3,7 @@ Hacky ps223 pdf to csv converter.
 $ curl \
     https://www.seattleschools.org/wp-content/uploads/2024/09/P223_Sep24.pdf \
     -o p223_sep24.pdf
-$ pdftotext -layout p223_sep24.pdf -f 2 - | tr -s ' ' > squished.txt
+$ pdftotext -layout p223_sep24.pdf -f 2 - > squished.txt
 $ python3 p223_pdf_to_csv.py squished.txt out.csv
 """
 
@@ -57,6 +57,7 @@ def main(filename, csvname, month=None):
     school = None
     with open(filename, "r", encoding="utf-8") as infile:
         for line in infile:
+            line = re.sub(r'\s+', ' ', line)
             if line.startswith(SCHOOL_PREFIX):
                 school = {}
                 p233_data[line[len(SCHOOL_PREFIX):].strip()] = school
