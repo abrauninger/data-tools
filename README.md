@@ -11,13 +11,6 @@ Scripts and tools for ingesting data.
 $ brew install pdftotext
 ```
 
-`tr` is also required, but `tr` should already be installed by the OS:
-
-```console
-$ which tr
-/usr/bin/tr
-```
-
 ### Extracting data from multiple P223 PDFs
 To extract data from multiple PDFs in an input directory:
 
