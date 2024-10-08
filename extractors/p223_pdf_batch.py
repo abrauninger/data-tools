@@ -75,9 +75,9 @@ def main(input_directory, output_directory):
     month_csv_paths.sort(key=lambda month_and_path: month_and_path[0])
 
     # Concatenate all the CSVs into one.
-    breakpoint()
+    all_csv_path = f'{output_directory}/all.csv'
+    pathlib.Path(os.path.dirname(all_csv_path)).mkdir(parents=True, exist_ok=True)
 
-    all_csv_path = '../output/p223_all.csv'
     with open(all_csv_path, 'w') as all_csv:
         first_month_csv = True
 
@@ -95,4 +95,4 @@ def main(input_directory, output_directory):
 
 
 if __name__ == '__main__':
-    main('../input', '../output')
+    main('../input/p223', '../output/p223')
