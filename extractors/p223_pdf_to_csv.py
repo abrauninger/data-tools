@@ -4,7 +4,7 @@ $ curl \
     https://www.seattleschools.org/wp-content/uploads/2024/09/P223_Sep24.pdf \
     -o p223_sep24.pdf
 $ pdftotext -layout p223_sep24.pdf -f 2 - | tr -s ' ' > squished.txt
-$ python3 parse.py squished.txt out.csv
+$ python3 p223_pdf_to_csv.py squished.txt out.csv
 """
 
 import re
@@ -20,7 +20,7 @@ HEADERS = [
     "Female",
     "Non-Binary",
     "Total Student Count",
-    "P223 Total Coun",
+    "P223 Total Count",
     "P223 Total FTE",
 ]
 
