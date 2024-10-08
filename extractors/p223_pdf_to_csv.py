@@ -24,18 +24,26 @@ HEADERS = [
     "P223 Total FTE",
 ]
 
-K_12_LINE_REGEX = re.compile('^ ([1-9K][0-2]?)')
 PRESCHOOL_LINE = 'Gr: Preschool'
+STATE_FDK_LINE = ' State FDK'
+STATE_FDK_EQUALS_LINE = ' State FDK ='
+K_12_LINE_REGEX = re.compile('^ ([1-9K][0-2]?)')
 
 
 def get_grade(line):
     if line.startswith(PRESCHOOL_LINE):
         return 'Preschool', line[len(PRESCHOOL_LINE):].strip()
+
+    grade = None
+    if line.startswith(STATE_FDK_LINE) and not line.startswith(STATE_FDK_EQUALS_LINE):
+        return 'K', line[len(STATE_FDK_LINE):].strip()
+
     m = K_12_LINE_REGEX.match(line)
     if m:
         grade = m.group(1)
         return grade, line[len(grade) + 1:].strip()
-    return None, None
+    else:
+        return None, None
 
 
 def parse_line(line, school):
