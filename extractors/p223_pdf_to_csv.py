@@ -44,7 +44,7 @@ def parse_line(line, school):
         school[grade] = [float(x) for x in remaining.split(' ')]
 
 
-def main(filename, csvname):
+def main(filename, csvname, month=None):
     p233_data = {}
     school = None
     with open(filename, "r", encoding="utf-8") as infile:
@@ -57,10 +57,22 @@ def main(filename, csvname):
 
     with open(csvname, 'w', newline='') as outfile:
         writer = csv.writer(outfile)
-        writer.writerow(['School', 'Grade'] + HEADERS)
+
+        header_row = []
+        if month is not None:
+            header_row.append('Month')
+
+        header_row.extend(['School', 'Grade'] + HEADERS)
+        writer.writerow(header_row)
+
         for school, gradeinfo in p233_data.items():
             for grade, data in gradeinfo.items():
-                writer.writerow([school, grade] + data)
+                data_row = []
+                if month is not None:
+                    data_row.append(month)
+
+                data_row.extend([school, grade] + data)
+                writer.writerow(data_row)
 
 
 if __name__ == '__main__':

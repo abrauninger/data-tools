@@ -44,6 +44,8 @@ def main(input_directory, output_directory):
 
     pdf_paths = glob.glob(f'{input_directory}/*.pdf')
 
+    month_csv_paths = []
+
     for pdf_path in pdf_paths:
         with tempfile.NamedTemporaryFile(delete_on_close=False) as squished_tempfile:
             # '-f 2' to start processing on the second page of the PDF (since page 1 is a cover page).
@@ -61,12 +63,35 @@ def main(input_directory, output_directory):
             squished_tempfile.close()
 
             month = month_from_pdf_file_name(pdf_path)
-            output_file = f'{output_directory}/month/{month}.csv'
-            pathlib.Path(os.path.dirname(output_file)).mkdir(parents=True, exist_ok=True)
+            month_csv_file_path = f'{output_directory}/month/{month}.csv'
+            pathlib.Path(os.path.dirname(month_csv_file_path)).mkdir(parents=True, exist_ok=True)
 
-            p223_pdf_to_csv.main(squished_tempfile.name, output_file)
+            p223_pdf_to_csv.main(squished_tempfile.name, month_csv_file_path, month)
 
-            print(f"Extracted {pdf_path} to {output_file}")
+            print(f"Extracted {pdf_path} to {month_csv_file_path}")
+
+            month_csv_paths.append((month, month_csv_file_path))
+
+    month_csv_paths.sort(key=lambda month_and_path: month_and_path[0])
+
+    # Concatenate all the CSVs into one.
+    breakpoint()
+
+    all_csv_path = '../output/p223_all.csv'
+    with open(all_csv_path, 'w') as all_csv:
+        first_month_csv = True
+
+        for (_, month_csv_file_path) in month_csv_paths:
+            with open(month_csv_file_path, 'r', encoding='utf-8') as month_csv_file:
+                header_line = month_csv_file.readline()
+                if first_month_csv:
+                    all_csv.write(header_line)
+                    first_month_csv = False
+
+                for data_line in month_csv_file:
+                    all_csv.write(data_line)
+
+    print(f"Concatenated all extracted CSVs to {all_csv_path}")
 
 
 if __name__ == '__main__':
