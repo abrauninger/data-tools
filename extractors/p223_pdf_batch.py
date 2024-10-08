@@ -37,13 +37,13 @@ def month_from_pdf_file_name(pdf_path) -> str:
 
 
 def main(input_directory, output_directory):
-    pdftotext = shutil.which('pdftotext')
+    pdftotext = shutil.which('pdftotext2')
     if pdftotext is None:
-        sys.exit("'pdftotext' is not installed. See installation instructions in README.md.")
+        raise RuntimeError("'pdftotext' is not installed. See installation instructions in README.md.")
 
     tr = shutil.which('tr')
     if tr is None:
-        sys.exit("'tr' is not installed. See installation instructions in README.md.")
+        raise RuntimeError("'tr' is not installed. See installation instructions in README.md.")
 
     pdf_paths = glob.glob(f'{input_directory}/*.pdf')
 
@@ -56,7 +56,7 @@ def main(input_directory, output_directory):
             out, err = pdftotext_process.communicate()
 
             if err is not None:
-                sys.exit(f"'pdftotext' had an error:\n{err}")
+                raise RuntimeError(f"'pdftotext' had an error:\n{err}")
 
             if out is not None:
                 print(f"'pdftotext' produced output on stdout, which was unexpected:\n{out}")
