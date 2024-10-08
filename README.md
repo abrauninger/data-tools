@@ -3,13 +3,7 @@ Scripts and tools for ingesting data.
 
 ## P223 data
 
-CSV of P223 data published by Seattle Public Schools from September 2019 through September 2024:
-
-[output/p223/all.csv](/output/p223/all.csv)
-
-### Updating P223 data
-
-#### Setup
+### Setup
 
 **Note:** This has only been tested on macOS.
 
@@ -24,16 +18,16 @@ $ which tr
 /usr/bin/tr
 ```
 
-#### Extracting data from all P223 PDFs
-P223 PDFs from Seattle Public Schools are committed to the [input/p223](/input/p223) directory in this repo.
-
-To extract data from all PDFs in [input/p223](/input/p223) to [output/p223/all.csv](/output/p223/all.csv), run:
+### Extracting data from multiple P223 PDFs
+To extract data from multiple PDFs in an input directory:
 
 ```console
-$ python3 extractors/p223_pdf_batch.py
+$ python3 extractors/p223_pdf_batch.py my/input/directory my/output/directory
 ```
 
-#### Extracting data from a single P223 PDF
+**TODO:** Add instructions for retrieving PDFs and cached outputs from Google Cloud.
+
+### Extracting data from a single P223 PDF
 ```console
 $ curl \
     https://www.seattleschools.org/wp-content/uploads/2024/09/P223_Sep24.pdf \
